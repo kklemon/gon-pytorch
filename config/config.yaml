@@ -1,0 +1,37 @@
+hydra:
+  run:
+    dir: ${logging.log_dir}/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    name: ${logging.run_name}-${dataset.name}
+
+logging:
+  log_dir: runs
+  run_name: gon
+  log_every: 100
+  n_samples_per_epoch: 64
+  n_recons_per_epoch: 32
+
+model:
+  hidden_dim: 128
+  num_layers: 6
+  activation: siren
+  bias: true
+  dropout: 0.2
+  latent_dim: 128
+  latent_reg: 0
+  pos_encoder:
+    name: gaussian
+    args:
+      mapping_size: 32
+
+dataset:
+  name: ???
+  root: ???
+  image_size: 32
+
+training:
+  device: null
+  batch_size: 128
+  lr: 1e-4
+  epochs: 100
+  num_workers: 4
