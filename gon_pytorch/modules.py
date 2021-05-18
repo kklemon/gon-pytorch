@@ -197,15 +197,16 @@ class MLP(nn.Module):
             is_first = i == 0
             is_last = i + 1 == self.num_layers
 
-            self.blocks.append(block_factory(
+            curr_block = [block_factory(
                 in_feat,
                 out_feat,
                 is_first=is_first,
                 is_last=is_last
-            ))
-
+            )]
             if not is_last and dropout:
-                self.blocks.append(nn.Dropout(dropout))
+                curr_block.append(nn.Dropout(dropout))
+
+            self.blocks.append(nn.Sequential(*curr_block))
 
         self.final_activation = final_activation
         if final_activation is None:
@@ -214,7 +215,7 @@ class MLP(nn.Module):
     def forward(self, x, modulations=None):
         for i, block in enumerate(self.blocks):
             x = block(x)
-            if modulations is not None and not block.is_last:
+            if modulations is not None and len(self.blocks) > i + 1:
                 x *= modulations[i][:, None, None, :]
         return self.final_activation(x)
 
