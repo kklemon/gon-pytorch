@@ -112,7 +112,7 @@ Citations
 }
 ```
 
-```bibtext
+```bibtex
 @misc{mehta2021modulated,
     title   = {Modulated Periodic Activations for Generalizable Local Functional Representations}, 
     author  = {Ishit Mehta and Michaël Gharbi and Connelly Barnes and Eli Shechtman and Ravi Ramamoorthi and Manmohan Chandraker},
