@@ -1,9 +1,9 @@
 import torch
-import modules
 import numpy as np
 import torch.nn as nn
 
 from torch.utils.data import Dataset
+from gon_pytorch import modules
 
 
 def get_block_factory(activation='siren', bias=True):

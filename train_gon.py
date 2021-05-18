@@ -2,10 +2,7 @@ import pickle
 import hydra
 import numpy as np
 import torch
-
 import datasets
-import modules
-import utils
 
 from pathlib import Path
 from itertools import chain
@@ -13,6 +10,7 @@ from omegaconf import DictConfig
 from torchvision.utils import save_image, make_grid
 from torchvision import transforms
 from torch.utils.data import DataLoader
+from gon_pytorch import modules, utils
 
 
 def train(model, batches, input, opt, device, epoch, latent_reg, log_every=100):
@@ -32,7 +30,7 @@ def train(model, batches, input, opt, device, epoch, latent_reg, log_every=100):
         batch_input = input.repeat(len(images), 1, 1, 1)
 
         # Obtain latent with respect to origin
-        latents, inner_loss = model.infer_latents(images, batch_input)
+        latents, inner_loss = model.infer_latents(batch_input, images)
 
         # Optimize model with obtained latent
         out = model(batch_input, latents)
@@ -84,7 +82,7 @@ def eval(model, batches, input, device):
         batch_input = input.repeat(len(images), 1, 1, 1)
 
         # Obtain latent with respect to origin
-        latents, inner_loss = model.infer_latents(images, batch_input)
+        latents, inner_loss = model.infer_latents(batch_input, images)
 
         # Calculate loss for obtained latent
         out = model(batch_input, latents)
@@ -151,7 +149,7 @@ def main(cfg: DictConfig):
 
     pos_encoder_kwargs = {'in_dim': 2, **cfg.model.pos_encoder.args}
     pos_encoder_cls = {
-        'none': modules.CoordinateEncoding,
+        'none': modules.IdentityPositionalEncoding,
         'gaussian': modules.GaussianFourierFeatureTransform,
         'nerf': modules.NeRFPositionalEncoding
     }.get(cfg.model.pos_encoder.name)
@@ -160,24 +158,25 @@ def main(cfg: DictConfig):
 
     pos_encoder = pos_encoder_cls(**pos_encoder_kwargs)
     grid = utils.get_xy_grid(cfg.dataset.image_size, cfg.dataset.image_size)
-    model_input = pos_encoder(grid).to(device)
-
-    (log_dir / 'pos_encoder.p').write_bytes(pickle.dumps(pos_encoder))
+    model_input = grid.to(device)
 
     model = modules.GON(
         latent_dim=cfg.model.latent_dim,
-        input_dim=pos_encoder.out_dim,
         out_dim=dataset.num_channels,
         hidden_dim=cfg.model.hidden_dim,
         num_layers=cfg.model.num_layers,
         block_factory=utils.get_block_factory(cfg.model.activation, cfg.model.bias),
-        dropout=cfg.model.dropout
+        pos_encoder=pos_encoder,
+        modulation=cfg.model.latent_modulation,
+        latent_updates=cfg.model.latent_updates,
+        dropout=cfg.model.dropout,
+        final_activation=torch.sigmoid
     ).to(device)
 
     print(model)
     print(f'# of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 
-    opt = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
+    opt = torch.optim.Adam(model.parameters(), lr=cfg.training.lr, weight_decay=1e-3)
 
     try:
         print('TRAINING')
@@ -192,7 +191,7 @@ def main(cfg: DictConfig):
             train_labels = train_labels.numpy()
 
             recon_input = model_input.repeat(len(fixed_batch), 1, 1, 1)
-            latent = model.infer_latents(fixed_batch, recon_input)[0]
+            latent = model.infer_latents(recon_input, fixed_batch)[0]
             recon = model.forward(recon_input, latent)
 
             gt_recon_pairs = torch.stack(list(chain.from_iterable(zip(fixed_batch, recon))))

@@ -4,16 +4,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from functools import partial
-from typing import Optional
+from typing import Optional, List, Callable
 from math import pi
 
 
 class CoordinateEncoding(nn.Module):
-    def __init__(self, proj_matrix):
+    def __init__(self, proj_matrix, is_trainable=False):
         super().__init__()
-        self.register_buffer('proj_matrix', proj_matrix)
+        if is_trainable:
+            self.register_parameter('proj_matrix', nn.Parameter(proj_matrix))
+        else:
+            self.register_buffer('proj_matrix', proj_matrix)
         self.in_dim = self.proj_matrix.size(0)
-        self.out_dim = self.proj_matrix.size(1) * 2
+        self.out_dim = self.proj_matrix.size(1)
 
     def forward(self, x):
         shape = x.shape
@@ -27,7 +30,7 @@ class CoordinateEncoding(nn.Module):
         x = x.view(*shape[:-1], -1)
         x = 2 * pi * x
 
-        return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+        return torch.sin(x)
 
 
 class IdentityPositionalEncoding(CoordinateEncoding):
@@ -136,6 +139,8 @@ class SirenLinear(LinearBlock):
 
         with torch.no_grad():
             self.linear.weight.uniform_(-b, b)
+            if self.linear.bias is not None:
+                self.linear.bias.uniform_(-b, b)
 
 
 class BaseBlockFactory:
@@ -171,8 +176,7 @@ class MLP(nn.Module):
                  num_layers: int,
                  block_factory: BaseBlockFactory,
                  dropout: float = 0.0,
-                 residual_connections: bool = False,
-                 final_activation: Optional[str] = None):
+                 final_activation: Optional[Callable[[torch.Tensor], torch.Tensor]] = None):
         super().__init__()
 
         self.in_dim = in_dim
@@ -180,7 +184,6 @@ class MLP(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.dropout = dropout
-        self.residual_connections = residual_connections
 
         self.blocks = nn.ModuleList()
 
@@ -208,37 +211,71 @@ class MLP(nn.Module):
         if final_activation is None:
             self.final_activation = nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, modulations=None):
         for i, block in enumerate(self.blocks):
-            if i + 1 < len(self.blocks) and self.residual_connections:
-                x = block(x) + x
-            else:
-                x = block(x)
+            x = block(x)
+            if modulations is not None and not block.is_last:
+                x *= modulations[i][:, None, None, :]
         return self.final_activation(x)
+
+
+class ModulationNetwork(nn.Module):
+    def __init__(self, in_dim: int, mod_dims: List[int], activation=nn.ReLU):
+        super().__init__()
+
+        self.blocks = nn.ModuleList()
+        for i in range(len(mod_dims)):
+            self.blocks.append(nn.Sequential(
+                nn.Linear(in_dim + (mod_dims[i - 1] if i else 0), mod_dims[i]),
+                activation()
+            ))
+
+    def forward(self, input):
+        out = input
+        mods = []
+        for block in self.blocks:
+            out = block(out)
+            mods.append(out)
+            out = torch.cat([out, input], dim=-1)
+        return mods
 
 
 class GON(nn.Module):
     def __init__(self,
                  latent_dim: int,
-                 input_dim: int,
                  out_dim: int,
                  hidden_dim: int,
                  num_layers: int,
                  block_factory: BaseBlockFactory,
+                 pos_encoder: CoordinateEncoding = None,
+                 modulation: bool = False,
+                 latent_updates: int = 1,
                  dropout: float = 0.0,
                  learn_origin=False,
-                 final_activation=None):
+                 final_activation=torch.sigmoid):
         super().__init__()
 
+        assert latent_updates > 0, 'Number of latent updates must be > 0'
+
+        self.pos_encoder = pos_encoder
         self.latent_dim = latent_dim
+        self.latent_updates = latent_updates
 
         if learn_origin:
-            self.origin = nn.Parameter(torch.zeros(1, latent_dim))
+            self.init_latent = nn.Parameter(torch.zeros(1, latent_dim))
         else:
-            self.register_buffer('origin', torch.zeros(1, latent_dim))
+            self.register_buffer('init_latent', torch.zeros(1, latent_dim))
+
+        self.mod_network = None
+        if modulation:
+            self.mod_network = ModulationNetwork(
+                in_dim=latent_dim,
+                mod_dims=[hidden_dim for _ in range(num_layers - 1)],
+                activation=nn.ReLU
+            )
 
         self.net = MLP(
-            in_dim=latent_dim + input_dim,
+            in_dim=pos_encoder.out_dim + latent_dim * (not modulation),
             out_dim=out_dim,
             hidden_dim=hidden_dim,
             num_layers=num_layers,
@@ -247,8 +284,8 @@ class GON(nn.Module):
             final_activation=final_activation
         )
 
-    def get_origin_latent(self, n):
-        return self.origin.repeat(n, 1)
+    def get_init_latent(self, n):
+        return self.init_latent.repeat(n, 1)
 
     def loss_inner(self, output, target):
         return F.binary_cross_entropy(
@@ -260,16 +297,26 @@ class GON(nn.Module):
             output.view(-1), target.view(-1), reduction='none'
         ).view(target.shape).mean()
 
-    def infer_latents(self, data, model_input):
-        origin = self.get_origin_latent(len(data)).requires_grad_(True)
-        out = self(model_input, origin)
-        inner_loss = self.loss_inner(out, data)
-        latent = origin - torch.autograd.grad(inner_loss, [origin], create_graph=True, retain_graph=True)[0]
+    def infer_latents(self, input, target):
+        latent = self.get_init_latent(len(target)).requires_grad_(True)
+
+        for i in range(self.latent_updates):
+            out = self(input, latent)
+            inner_loss = self.loss_inner(out, target)
+            latent = latent - torch.autograd.grad(inner_loss, [latent], create_graph=True, retain_graph=True)[0]
+
         return latent, inner_loss
 
     def forward(self, input, latent):
-        b, w, h, c = input.shape
-        latent = latent[:, None, None, :].repeat(1, w, h, 1)
-        x = torch.cat([latent, input], dim=-1)
-        x = self.net(x)
-        return torch.sigmoid(x)
+        if self.pos_encoder is not None:
+            input = self.pos_encoder(input)
+
+        if self.mod_network is None:
+            b, w, h, c = input.shape
+            latent = latent[:, None, None, :].repeat(1, w, h, 1)
+            out = self.net(torch.cat([latent, input], dim=-1))
+        else:
+            mods = self.mod_network(latent)
+            out = self.net(input, mods)
+
+        return out

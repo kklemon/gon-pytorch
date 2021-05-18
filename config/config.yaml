@@ -13,25 +13,27 @@ logging:
 
 model:
   hidden_dim: 128
-  num_layers: 6
+  num_layers: 5
   activation: siren
   bias: true
-  dropout: 0.2
+  dropout: 0.1
   latent_dim: 128
   latent_reg: 0
+  latent_modulation: false
+  latent_updates: 1
   pos_encoder:
     name: gaussian
     args:
-      mapping_size: 32
+      mapping_size: 128
 
 dataset:
   name: ???
-  root: ???
+  root: ./data
   image_size: 32
 
 training:
   device: null
   batch_size: 128
   lr: 1e-4
-  epochs: 100
+  epochs: 10
   num_workers: 4
