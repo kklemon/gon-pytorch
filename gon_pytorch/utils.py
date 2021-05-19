@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import torch.nn as nn
 
 from torch.utils.data import Dataset
@@ -19,12 +18,12 @@ def get_block_factory(activation='siren', bias=True):
 
 
 def get_xy_grid(width, height):
-    x_coords = np.linspace(-1, 1, width, endpoint=False)
-    y_coords = np.linspace(-1, 1, height, endpoint=False)
+    x_coords = torch.linspace(-1, 1, width)
+    y_coords = torch.linspace(-1, 1, height)
 
     xy_grid = torch.tensor(
-        np.stack(np.meshgrid(x_coords, y_coords), -1)
-    ).unsqueeze(0).float().contiguous()
+        torch.stack(torch.meshgrid(x_coords, y_coords), -1)
+    ).unsqueeze(0)
 
     return xy_grid
 

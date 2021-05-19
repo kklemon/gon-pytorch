@@ -1,11 +1,10 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from functools import partial
 from typing import Optional, List, Callable
-from math import pi
+from math import pi, sqrt
 
 
 class CoordinateEncoding(nn.Module):
@@ -135,7 +134,7 @@ class SirenLinear(LinearBlock):
         if self.is_first:
             b = 1 / self.in_f
         else:
-            b = np.sqrt(6 / self.in_f) / self.w0
+            b = sqrt(6 / self.in_f) / self.w0
 
         with torch.no_grad():
             self.linear.weight.uniform_(-b, b)
