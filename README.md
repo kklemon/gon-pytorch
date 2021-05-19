@@ -18,6 +18,7 @@ Usage
 
 Requirements:
 - [pytorch](https://github.com/pytorch/pytorch)
+- [numpy](https://github.com/numpy/numpy)
 - [hydra](https://github.com/facebookresearch/hydra)
 
 After cloning the repository, a GON can be trained using the `train_gon.py` script:
@@ -29,7 +30,7 @@ python train_gon.py dataset.name=<MNIST|FashionMNIST|CIFAR10> dataset.root=<data
 All configuration options are listed in `config/config.yaml`. See the [hydra](https://github.com/facebookresearch/hydra) documentation for more information on configuration.
 
 
-### Code
+### From Code
 
 Install the package:
 
