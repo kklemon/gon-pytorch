@@ -9,5 +9,6 @@ from .modules import (
     SirenBlockFactory,
     Swish,
     Sine,
+    ImplicitDecoder,
     GON
 )
