@@ -42,10 +42,10 @@ Instantiate a GON with [NeRF](https://arxiv.org/abs/2003.08934) positional encod
 
 ```python
 import torch
-from gon_pytorch import NeRFPositionalEncoding, GON, SirenBlockFactory
+from gon_pytorch import NeRFPositionalEncoding, ImplicitDecoder, GON, SirenBlockFactory
 
 pos_encoder = NeRFPositionalEncoding(in_dim=2)
-gon = GON(
+decoder = ImplicitDecoder(
     latent_dim=128,
     out_dim=3,
     hidden_dim=128,
@@ -53,6 +53,7 @@ gon = GON(
     block_factory=SirenBlockFactory(),
     pos_encoder=pos_encoder
 )
+gon = GON(decoder)
 
 coords = torch.randn(1, 32, 32, 2)
 image = torch.rand(1, 32, 32, 3)
