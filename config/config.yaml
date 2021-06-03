@@ -23,8 +23,7 @@ model:
   latent_updates: 1
   pos_encoder:
     name: gaussian
-    args:
-      mapping_size: 128
+    args: {}
 
 dataset:
   name: ???

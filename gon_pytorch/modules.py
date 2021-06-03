@@ -42,18 +42,18 @@ class IdentityPositionalEncoding(CoordinateEncoding):
 
 
 class GaussianFourierFeatureTransform(CoordinateEncoding):
-    def __init__(self, in_dim: int, mapping_size: int = 32, scale: float = 1.0, seed=None):
-        super().__init__(self.get_transform_matrix(in_dim, mapping_size, scale, seed=seed))
+    def __init__(self, in_dim: int, mapping_size: int = 32, sigma: float = 1.0, seed=None):
+        super().__init__(self.get_transform_matrix(in_dim, mapping_size, sigma, seed=seed))
         self.mapping_size = mapping_size
-        self.scale = scale
+        self.sigma = sigma
         self.seed = seed
 
     @classmethod
-    def get_transform_matrix(cls, in_dim, mapping_size, scale, seed=None):
+    def get_transform_matrix(cls, in_dim, mapping_size, sigma, seed=None):
         generator = None
         if seed is not None:
             generator = torch.Generator().manual_seed(seed)
-        return torch.randn((in_dim, mapping_size), generator=generator) * scale
+        return torch.normal(mean=0, std=sigma, size=(in_dim, mapping_size), generator=generator)
 
     @classmethod
     def from_matrix(cls, projection_matrix):
@@ -61,6 +61,9 @@ class GaussianFourierFeatureTransform(CoordinateEncoding):
         feature_transform = cls(in_dim, mapping_size)
         feature_transform.projection_matrix.data = projection_matrix
         return feature_transform
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(in_dim={self.in_dim}, mapping_size={self.mapping_size}, sigma={self.sigma})'
 
 
 class NeRFPositionalEncoding(CoordinateEncoding):
