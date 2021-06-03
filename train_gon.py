@@ -21,7 +21,7 @@ def train(model, batches, input, opt, device, epoch, latent_reg, log_every=100):
     outer_loss_sum = 0
     latent_l2_loss_sum = 0
 
-    latent_buffer = torch.zeros(len(batches.dataset), model.latent_dim)
+    latent_buffer = torch.zeros(len(batches.dataset), model.decoder.latent_dim)
     label_buffer = torch.zeros(len(batches.dataset), dtype=torch.long)
 
     for step, (images, labels) in enumerate(batches):
@@ -61,7 +61,7 @@ def train(model, batches, input, opt, device, epoch, latent_reg, log_every=100):
             if latent_reg:
                 stats['latent l2 loss'] = latent_l2_loss_sum
 
-            print(f'[EPOCH {epoch:03d}][{seen_samples:05d}/{len(batches.dataset):05d} ' +
+            print(f'[EPOCH {epoch:03d}][{seen_samples:05d}/{len(batches.dataset):05d}] ' +
                   ', '.join(f'{k}: {v / step:.4f}' for k, v in stats.items()))
 
     return latent_buffer, label_buffer
@@ -74,7 +74,7 @@ def eval(model, batches, input, device):
     inner_loss_sum = 0
     outer_loss_sum = 0
 
-    latent_buffer = torch.zeros(len(batches.dataset), model.latent_dim)
+    latent_buffer = torch.zeros(len(batches.dataset), model.decoder.latent_dim)
     label_buffer = torch.zeros(len(batches.dataset), dtype=torch.long)
 
     for step, (images, labels) in enumerate(batches):
@@ -160,7 +160,7 @@ def main(cfg: DictConfig):
     grid = utils.get_xy_grid(cfg.dataset.image_size, cfg.dataset.image_size)
     model_input = grid.to(device)
 
-    model = modules.GON(
+    decoder = modules.ImplicitDecoder(
         latent_dim=cfg.model.latent_dim,
         out_dim=dataset.num_channels,
         hidden_dim=cfg.model.hidden_dim,
@@ -168,10 +168,10 @@ def main(cfg: DictConfig):
         block_factory=utils.get_block_factory(cfg.model.activation, cfg.model.bias),
         pos_encoder=pos_encoder,
         modulation=cfg.model.latent_modulation,
-        latent_updates=cfg.model.latent_updates,
         dropout=cfg.model.dropout,
         final_activation=torch.sigmoid
-    ).to(device)
+    )
+    model = modules.GON(decoder, cfg.model.latent_updates, cfg.model.learn_origin).to(device)
 
     print(model)
     print(f'# of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')

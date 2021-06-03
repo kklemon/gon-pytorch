@@ -243,7 +243,7 @@ class ModulationNetwork(nn.Module):
         return mods
 
 
-class GON(nn.Module):
+class ImplicitDecoder(nn.Module):
     def __init__(self,
                  latent_dim: int,
                  out_dim: int,
@@ -252,22 +252,12 @@ class GON(nn.Module):
                  block_factory: BaseBlockFactory,
                  pos_encoder: CoordinateEncoding = None,
                  modulation: bool = False,
-                 latent_updates: int = 1,
                  dropout: float = 0.0,
-                 learn_origin=False,
                  final_activation=torch.sigmoid):
         super().__init__()
 
-        assert latent_updates > 0, 'Number of latent updates must be > 0'
-
         self.pos_encoder = pos_encoder
         self.latent_dim = latent_dim
-        self.latent_updates = latent_updates
-
-        if learn_origin:
-            self.init_latent = nn.Parameter(torch.zeros(1, latent_dim))
-        else:
-            self.register_buffer('init_latent', torch.zeros(1, latent_dim))
 
         self.mod_network = None
         if modulation:
@@ -287,6 +277,34 @@ class GON(nn.Module):
             final_activation=final_activation
         )
 
+    def forward(self, input, latent):
+        if self.pos_encoder is not None:
+            input = self.pos_encoder(input)
+
+        if self.mod_network is None:
+            b, w, h, c = input.shape
+            latent = latent[:, None, None, :].repeat(1, w, h, 1)
+            out = self.net(torch.cat([latent, input], dim=-1))
+        else:
+            mods = self.mod_network(latent)
+            out = self.net(input, mods)
+
+        return out
+
+
+class GON(nn.Module):
+    def __init__(self, decoder: ImplicitDecoder, latent_updates: int = 1, learn_origin: bool = False):
+        super().__init__()
+
+        self.decoder = decoder
+        self.latent_updates = latent_updates
+        self.latent_updates = latent_updates
+
+        if learn_origin:
+            self.init_latent = nn.Parameter(torch.zeros(1, self.decoder.latent_dim))
+        else:
+            self.register_buffer('init_latent', torch.zeros(1, self.decoder.latent_dim))
+
     def get_init_latent(self, n):
         return self.init_latent.repeat(n, 1)
 
@@ -304,22 +322,11 @@ class GON(nn.Module):
         latent = self.get_init_latent(len(target)).requires_grad_(True)
 
         for i in range(self.latent_updates):
-            out = self(input, latent)
+            out = self.decoder(input, latent)
             inner_loss = self.loss_inner(out, target)
             latent = latent - torch.autograd.grad(inner_loss, [latent], create_graph=True, retain_graph=True)[0]
 
         return latent, inner_loss
 
     def forward(self, input, latent):
-        if self.pos_encoder is not None:
-            input = self.pos_encoder(input)
-
-        if self.mod_network is None:
-            b, w, h, c = input.shape
-            latent = latent[:, None, None, :].repeat(1, w, h, 1)
-            out = self.net(torch.cat([latent, input], dim=-1))
-        else:
-            mods = self.mod_network(latent)
-            out = self.net(input, mods)
-
-        return out
+        return self.decoder(input, latent)
