@@ -147,7 +147,7 @@ def main(cfg: DictConfig):
 
     fixed_batch = next(iter(train_batches))[0][:cfg.logging.n_recons_per_epoch].to(device)
 
-    pos_encoder_kwargs = {'in_dim': 2, **cfg.model.pos_encoder.args}
+    pos_encoder_kwargs = {'in_dim': 2, **cfg.model.pos_encoder.get('args', {})}
     pos_encoder_cls = {
         'none': modules.IdentityPositionalEncoding,
         'gaussian': modules.GaussianFourierFeatureTransform,
