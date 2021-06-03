@@ -15,7 +15,7 @@ class CoordinateEncoding(nn.Module):
         else:
             self.register_buffer('proj_matrix', proj_matrix)
         self.in_dim = self.proj_matrix.size(0)
-        self.out_dim = self.proj_matrix.size(1)
+        self.out_dim = self.proj_matrix.size(1) * 2
 
     def forward(self, x):
         shape = x.shape
@@ -29,7 +29,7 @@ class CoordinateEncoding(nn.Module):
         x = x.view(*shape[:-1], -1)
         x = 2 * pi * x
 
-        return torch.sin(x)
+        return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
 
 
 class IdentityPositionalEncoding(CoordinateEncoding):
