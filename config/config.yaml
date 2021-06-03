@@ -21,6 +21,7 @@ model:
   latent_reg: 0
   latent_modulation: false
   latent_updates: 1
+  learn_origin: false
   pos_encoder:
     name: gaussian
     args: {}
