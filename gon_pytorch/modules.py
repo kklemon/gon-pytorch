@@ -282,8 +282,8 @@ class ImplicitDecoder(nn.Module):
             input = self.pos_encoder(input)
 
         if self.mod_network is None:
-            b, w, h, c = input.shape
-            latent = latent[:, None, None, :].repeat(1, w, h, 1)
+            b, *spatial_dims, c = input.shape
+            latent = latent.view(b, *((1,) * len(spatial_dims)), -1).repeat(1, *spatial_dims, 1)
             out = self.net(torch.cat([latent, input], dim=-1))
         else:
             mods = self.mod_network(latent)
