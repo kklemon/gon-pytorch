@@ -64,7 +64,7 @@ latent, latent_loss = gon.infer_latents(coords, image)
 # Reconstruct from latent
 recon = gon(coords, latent)
 
-# Optimize model
+# Compute gradients
 loss = ((recon - image) ** 2).mean()
 loss.backward()
 ```
