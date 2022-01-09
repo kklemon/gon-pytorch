@@ -42,8 +42,8 @@ class IdentityPositionalEncoding(CoordinateEncoding):
 
 
 class GaussianFourierFeatureTransform(CoordinateEncoding):
-    def __init__(self, in_dim: int, mapping_size: int = 32, sigma: float = 1.0, seed=None):
-        super().__init__(self.get_transform_matrix(in_dim, mapping_size, sigma, seed=seed))
+    def __init__(self, in_dim: int, mapping_size: int = 32, sigma: float = 1.0, is_trainable: bool = False, seed=None):
+        super().__init__(self.get_transform_matrix(in_dim, mapping_size, sigma, seed=seed), is_trainable=is_trainable)
         self.mapping_size = mapping_size
         self.sigma = sigma
         self.seed = seed
