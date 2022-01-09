@@ -126,6 +126,9 @@ class Sine(nn.Module):
     def forward(self, x):
         return torch.sin(self.w0 * x)
 
+    def __repr__(self):
+        return f'Sine(w0={self.w0})'
+
 
 class SirenLinear(LinearBlock):
     def __init__(self, in_features, out_features, linear_cls=nn.Linear, w0=30, bias=True, is_first=False, is_last=False):
