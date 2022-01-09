@@ -1,7 +1,9 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from copy import copy
 from functools import partial
 from typing import Optional, List, Callable
 from math import pi, sqrt
@@ -148,6 +150,57 @@ class SirenLinear(LinearBlock):
                 self.linear.bias.uniform_(-b, b)
 
 
+class BatchedLinear(nn.Module):
+    def __init__(self, in_feat, out_feat, num_models, bias=True):
+        super().__init__()
+
+        self.in_feat = in_feat
+        self.out_feat = out_feat
+        self.num_models = num_models
+
+        self.weight = nn.Parameter(torch.Tensor(num_models, out_feat, in_feat))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(num_models, out_feat))
+        else:
+            self.bias = None
+
+        self.init_weights()
+
+    def init_weights(self):
+        for i in range(self.num_models):
+            w = self.weight[i]
+            nn.init.kaiming_uniform_(w, a=math.sqrt(5))
+            if self.bias is not None:
+                b = self.bias[i]
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(w)
+                bound = 1 / fan_in
+                nn.init.uniform_(b, -bound, bound)
+
+    def forward(self, x):
+        x = x.transpose(1, -1)
+        orig_shape = x.shape
+        x = x.reshape(x.size(0), x.size(1), -1)
+
+        out = torch.bmm(self.weight, x)
+        if self.bias is not None:
+            out += self.bias.unsqueeze(-1)
+
+        out = out.view((out.size(0), self.weight.shape[1]) + orig_shape[2:])
+        out = out.transpose(1, -1)
+
+        return out
+
+    def get_layer_by_index(self, idx):
+        linear = nn.Linear(self.in_feat, self.out_feat, bias=self.bias is not None)
+        linear.weight.data = self.weight[idx].data
+        if self.bias is not None:
+            linear.bias.data = self.bias[idx].data
+        return linear
+
+    def get_layers(self):
+        return list(map(self.get_layer_by_index, range(self.num_models)))
+
+
 class BaseBlockFactory:
     def __call__(self, in_f, out_f, is_first=False, is_last=False):
         raise NotImplementedError
@@ -223,6 +276,37 @@ class MLP(nn.Module):
             if modulations is not None and len(self.blocks) > i + 1:
                 x *= modulations[i][:, None, None, :]
         return self.final_activation(x)
+
+
+class BatchedImageMLP(MLP):
+    def __init__(self, num_models: int, block_factory: BaseBlockFactory, *args, **kwargs):
+
+        multi_model_block_factory = copy(block_factory)
+        multi_model_block_factory.linear_cls = partial(BatchedLinear, num_models=num_models)
+
+        super().__init__(*args, block_factory=multi_model_block_factory, **kwargs)
+
+        self.block_factory = block_factory
+        self.num_models = num_models
+        self.expected_batch_size = num_models
+
+    def get_model_by_index(self, idx):
+        model = MLP(
+            self.in_dim,
+            self.out_dim,
+            self.hidden_dim,
+            self.num_layers,
+            self.block_factory,
+            self.dropout,
+            self.final_activation
+        )
+        for src_block, trg_block in zip(self.blocks, model.blocks):
+            if hasattr(src_block, 'linear'):
+                trg_block.linear = src_block.linear.get_layer_by_index(idx)
+        return model
+
+    def get_model_splits(self):
+        return list(map(self.get_model_by_index, range(self.num_models)))
 
 
 class ModulationNetwork(nn.Module):
