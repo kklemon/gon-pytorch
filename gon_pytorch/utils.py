@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-from torch.utils.data import Dataset
 from gon_pytorch import modules
 
 
@@ -26,14 +25,3 @@ def get_xy_grid(width, height):
     ).unsqueeze(0)
 
     return xy_grid
-
-
-class NoLabelWrapper(Dataset):
-    def __init__(self, dataset):
-        self.dataset = dataset
-
-    def __getitem__(self, idx):
-        return self.dataset[idx][0]
-
-    def __len__(self):
-        return len(self.dataset)
