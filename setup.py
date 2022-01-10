@@ -9,7 +9,7 @@ setup(
     packages=find_packages(),
     version='0.1.1',
     license='MIT',
-    description='Implementation of Gradient Origin Networks in PyTorch',
+    description='Gradient Origin Networks for PyTorch',
     long_description=README,
     long_description_content_type='text/markdown',
     author='Kristian Klemon',
